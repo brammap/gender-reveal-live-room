@@ -241,12 +241,16 @@ function showGuestFlow(step) {
     el.guestModalTitle.textContent = "Your guess";
     el.guestModalCopy.textContent = "Vote boy or girl, then optionally suggest a baby name.";
     el.guestModalBody.innerHTML = `
-      <label>Who do you think it is?</label>
-      <select id="guestPollSelect">
-        <option value="">Choose one</option>
-        <option value="boy"${state.guestPoll === "boy" ? " selected" : ""}>Boy</option>
-        <option value="girl"${state.guestPoll === "girl" ? " selected" : ""}>Girl</option>
-      </select>
+      <div class="choice-grid">
+        <button id="guestBoyBtn" class="choice-card ${state.guestPoll === "boy" ? "selected" : ""}" type="button">
+          <span class="choice-emoji">👶</span>
+          <span class="choice-title">Boy</span>
+        </button>
+        <button id="guestGirlBtn" class="choice-card ${state.guestPoll === "girl" ? "selected" : ""}" type="button">
+          <span class="choice-emoji">👶</span>
+          <span class="choice-title">Girl</span>
+        </button>
+      </div>
       <label>Optional baby name suggestion</label>
       <input id="guestSuggestionInput" type="text" placeholder="Optional name suggestion" value="${state.guestSuggestion}" />
       <div class="button-row">
@@ -254,8 +258,17 @@ function showGuestFlow(step) {
         <button id="guestSkipNoteBtn" class="secondary" type="button">Skip note for now</button>
       </div>
     `;
+    const boyBtn = document.getElementById("guestBoyBtn");
+    const girlBtn = document.getElementById("guestGirlBtn");
+    const setPollChoice = (choice) => {
+      state.guestPoll = choice;
+      boyBtn.classList.toggle("selected", choice === "boy");
+      girlBtn.classList.toggle("selected", choice === "girl");
+    };
+    boyBtn.onclick = () => setPollChoice("boy");
+    girlBtn.onclick = () => setPollChoice("girl");
     document.getElementById("guestPollNextBtn").onclick = () => {
-      const poll = document.getElementById("guestPollSelect").value;
+      const poll = state.guestPoll;
       const suggestion = document.getElementById("guestSuggestionInput").value.trim();
       if (!poll) return setStatus("Choose boy or girl");
       state.guestPoll = poll;
@@ -286,17 +299,19 @@ function showGuestFlow(step) {
         <button id="guestNoteLaterBtn" class="secondary" type="button">Do it after reveal</button>
       </div>
     `;
-    document.getElementById("guestNoteSendBtn").onclick = () => {
+    const sendBtn = document.getElementById("guestNoteSendBtn");
+    const laterBtn = document.getElementById("guestNoteLaterBtn");
+    sendBtn.addEventListener("click", () => {
       state.guestNote = document.getElementById("guestNoteInput").value.trim();
       sessionStorage.guestNote = state.guestNote;
       postGuestNote();
       hideGuestModal();
-    };
-    document.getElementById("guestNoteLaterBtn").onclick = () => {
+    });
+    laterBtn.addEventListener("click", () => {
       state.guestDeferredNote = true;
       sessionStorage.guestDeferredNote = "1";
       hideGuestModal();
-    };
+    });
   }
 }
 
