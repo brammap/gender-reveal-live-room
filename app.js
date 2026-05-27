@@ -4,6 +4,18 @@ const isGuest = params.has("guest");
 
 const el = {
   contextBanner: document.getElementById("contextBanner"),
+  guestModal: document.getElementById("guestModal"),
+  guestModalTitle: document.getElementById("guestModalTitle"),
+  guestModalCopy: document.getElementById("guestModalCopy"),
+  guestModalBody: document.getElementById("guestModalBody"),
+  closeGuestModalBtn: document.getElementById("closeGuestModalBtn"),
+  stepDotName: document.getElementById("stepDotName"),
+  stepDotEntry: document.getElementById("stepDotEntry"),
+  stepDotPoll: document.getElementById("stepDotPoll"),
+  stepDotNote: document.getElementById("stepDotNote"),
+  guestEntryPanel: document.getElementById("guestEntryPanel"),
+  watchOnlyBtn: document.getElementById("watchOnlyBtn"),
+  joinCameraBtn: document.getElementById("joinCameraBtn"),
   roomIdLabel: document.getElementById("roomIdLabel"),
   roleLabel: document.getElementById("roleLabel"),
   statusLabel: document.getElementById("statusLabel"),
@@ -34,6 +46,13 @@ const state = {
   audio: null,
   eventSource: null,
   clientId: sessionStorage.peerId || crypto.randomUUID(),
+  guestMode: params.get("mode") || null,
+  guestStep: "name",
+  guestName: sessionStorage.guestName || "",
+  guestPoll: sessionStorage.guestPoll || "",
+  guestSuggestion: sessionStorage.guestSuggestion || "",
+  guestNote: sessionStorage.guestNote || "",
+  guestDeferredNote: sessionStorage.guestDeferredNote === "1",
 };
 
 sessionStorage.peerId = state.clientId;
@@ -44,6 +63,30 @@ el.statusLabel.textContent = isGuest ? "Joining" : "Hosting";
 el.hostBadge.textContent = isGuest ? "Guest mode" : "Ready";
 el.contextBanner.hidden = window.isSecureContext;
 document.body.classList.toggle("guest-view", isGuest);
+el.closeGuestModalBtn.onclick = hideGuestModal;
+
+if (isGuest) {
+  el.guestEntryPanel.hidden = !!state.guestMode;
+  el.copyLinkBtn.textContent = "Guest link";
+  el.copyGuestLinkBtn.hidden = true;
+  el.startCamBtn.textContent = "Join camera";
+  el.revealBtn.hidden = true;
+  el.recordBtn.hidden = true;
+  el.downloadBtn.hidden = true;
+
+  const controlsTitle = document.querySelector(".controls h2");
+  const controlsText = document.querySelector(".controls p");
+  const heroTitle = document.querySelector(".hero-copy h1");
+  const heroText = document.querySelector(".hero-copy .lede");
+  const audienceTitle = document.querySelector(".studio-grid .studio-panel:first-child h2");
+  const revealTitle = document.querySelector(".studio-grid .studio-panel:last-child h2");
+  if (controlsTitle) controlsTitle.textContent = "Live view";
+  if (controlsText) controlsText.textContent = "You are watching the reveal room live.";
+  if (heroTitle) heroTitle.textContent = "You're in the live reveal.";
+  if (heroText) heroText.textContent = "Watch the countdown, see the reveal, and join the call as a guest.";
+  if (audienceTitle) audienceTitle.textContent = "Audience";
+  if (revealTitle) revealTitle.textContent = "Reveal";
+}
 
 function selfId() {
   return state.clientId;
@@ -120,9 +163,153 @@ async function postMessage(message) {
   });
 }
 
+function postGuestProfile() {
+  return postMessage({
+    type: "guest-profile",
+    room: roomId,
+    from: selfId(),
+    name: state.guestName,
+    poll: state.guestPoll,
+    suggestion: state.guestSuggestion,
+  });
+}
+
+function postGuestNote() {
+  return postMessage({
+    type: "guest-note",
+    room: roomId,
+    from: selfId(),
+    name: state.guestName,
+    note: state.guestNote,
+  });
+}
+
+function hideGuestModal() {
+  el.guestModal.hidden = true;
+}
+
+function setWizardStep(step) {
+  state.guestStep = step;
+  const steps = {
+    name: el.stepDotName,
+    entry: el.stepDotEntry,
+    poll: el.stepDotPoll,
+    note: el.stepDotNote,
+  };
+  Object.values(steps).forEach((node) => node?.classList.remove("active"));
+  steps[step]?.classList.add("active");
+}
+
+function showGuestFlow(step) {
+  setWizardStep(step);
+  el.guestModal.hidden = false;
+
+  if (step === "name") {
+    el.guestModalTitle.textContent = "Enter your name";
+    el.guestModalCopy.textContent = "We’ll use your name during the live reveal room.";
+    el.guestModalBody.innerHTML = `
+      <input id="guestNameInput" type="text" placeholder="Your name" value="${state.guestName}" />
+      <div class="button-row">
+        <button id="guestNameNextBtn" class="primary" type="button">Continue</button>
+      </div>
+    `;
+    document.getElementById("guestNameNextBtn").onclick = () => {
+      const value = document.getElementById("guestNameInput").value.trim();
+      if (!value) return setStatus("Please enter your name");
+      state.guestName = value;
+      sessionStorage.guestName = value;
+      showGuestFlow("entry");
+    };
+    return;
+  }
+
+  if (step === "entry") {
+    el.guestModalTitle.textContent = "How do you want to join?";
+    el.guestModalCopy.textContent = "Choose watch only or join with camera.";
+    el.guestModalBody.innerHTML = `
+      <div class="button-row">
+        <button id="guestWatchBtn" class="primary" type="button">Watch only</button>
+        <button id="guestCameraBtn" class="secondary" type="button">Join with camera</button>
+      </div>
+    `;
+    document.getElementById("guestWatchBtn").onclick = () => enterGuestMode("watch");
+    document.getElementById("guestCameraBtn").onclick = () => enterGuestMode("camera");
+    return;
+  }
+
+  if (step === "poll") {
+    el.guestModalTitle.textContent = "Your guess";
+    el.guestModalCopy.textContent = "Vote boy or girl, then optionally suggest a baby name.";
+    el.guestModalBody.innerHTML = `
+      <label>Who do you think it is?</label>
+      <select id="guestPollSelect">
+        <option value="">Choose one</option>
+        <option value="boy"${state.guestPoll === "boy" ? " selected" : ""}>Boy</option>
+        <option value="girl"${state.guestPoll === "girl" ? " selected" : ""}>Girl</option>
+      </select>
+      <label>Optional baby name suggestion</label>
+      <input id="guestSuggestionInput" type="text" placeholder="Optional name suggestion" value="${state.guestSuggestion}" />
+      <div class="button-row">
+        <button id="guestPollNextBtn" class="primary" type="button">Next</button>
+        <button id="guestSkipNoteBtn" class="secondary" type="button">Skip note for now</button>
+      </div>
+    `;
+    document.getElementById("guestPollNextBtn").onclick = () => {
+      const poll = document.getElementById("guestPollSelect").value;
+      const suggestion = document.getElementById("guestSuggestionInput").value.trim();
+      if (!poll) return setStatus("Choose boy or girl");
+      state.guestPoll = poll;
+      state.guestSuggestion = suggestion;
+      sessionStorage.guestPoll = poll;
+      sessionStorage.guestSuggestion = suggestion;
+      postGuestProfile();
+      showGuestFlow("note");
+    };
+    document.getElementById("guestSkipNoteBtn").onclick = () => {
+      state.guestDeferredNote = true;
+      sessionStorage.guestDeferredNote = "1";
+      postGuestProfile();
+      hideGuestModal();
+    };
+    return;
+  }
+
+  if (step === "note") {
+    el.guestModalTitle.textContent = "Note to parents";
+    el.guestModalCopy.textContent = state.revealActive
+      ? "You can leave a note now, or close this window."
+      : "You can leave a note now, or choose to do it after reveal.";
+    el.guestModalBody.innerHTML = `
+      <textarea id="guestNoteInput" placeholder="Write a note to the parents...">${state.guestNote}</textarea>
+      <div class="button-row">
+        <button id="guestNoteSendBtn" class="primary" type="button">Send note</button>
+        <button id="guestNoteLaterBtn" class="secondary" type="button">Do it after reveal</button>
+      </div>
+    `;
+    document.getElementById("guestNoteSendBtn").onclick = () => {
+      state.guestNote = document.getElementById("guestNoteInput").value.trim();
+      sessionStorage.guestNote = state.guestNote;
+      postGuestNote();
+      hideGuestModal();
+    };
+    document.getElementById("guestNoteLaterBtn").onclick = () => {
+      state.guestDeferredNote = true;
+      sessionStorage.guestDeferredNote = "1";
+      hideGuestModal();
+    };
+  }
+}
+
+function openDeferredNotePrompt() {
+  if (isGuest && state.guestDeferredNote && !state.guestNote) {
+    showGuestFlow("note");
+  }
+}
+
 function startEventStream() {
   state.eventSource?.close();
   state.eventSource = new EventSource(`/api/events?room=${encodeURIComponent(roomId)}&client=${encodeURIComponent(selfId())}`);
+
   state.eventSource.onmessage = async (event) => {
     const msg = JSON.parse(event.data);
     if (!msg || msg.room !== roomId || msg.from === selfId()) return;
@@ -164,6 +351,22 @@ function startEventStream() {
 
     if (msg.type === "reveal") {
       revealMain();
+      openDeferredNotePrompt();
+    }
+
+    if (msg.type === "guest-profile") {
+      const tile = ensureGuestTile(msg.from, msg.name || "Guest");
+      const footer = tile.querySelector(".guest-footer");
+      if (footer) {
+        const summary = `${msg.name || "Guest"}${msg.poll ? ` · ${msg.poll}` : ""}${msg.suggestion ? ` · ${msg.suggestion}` : ""}`;
+        footer.querySelector(".guest-name").textContent = summary;
+      }
+    }
+
+    if (msg.type === "guest-note") {
+      const tile = ensureGuestTile(msg.from, msg.name || "Guest");
+      const footer = tile.querySelector(".guest-footer");
+      if (footer) footer.querySelector(".guest-name").textContent = `${msg.name || "Guest"} · note received`;
     }
   };
 }
@@ -184,6 +387,20 @@ async function startCamera() {
     state.localStream.getTracks().forEach((track) => pc.addTrack(track, state.localStream));
   }
   return state.localStream;
+}
+
+async function enterGuestMode(mode) {
+  state.guestMode = mode;
+  el.guestEntryPanel.hidden = true;
+  hideGuestModal();
+  if (mode === "watch") {
+    setStatus("Watch only");
+    await postMessage({ type: "join", room: roomId, from: selfId(), role: "guest", mode: "watch" });
+    return;
+  }
+  await startCamera();
+  await postMessage({ type: "join", room: roomId, from: selfId(), role: "guest", mode: "camera" });
+  showGuestFlow("poll");
 }
 
 function stopCamera() {
@@ -339,7 +556,6 @@ async function startRecording() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#fff8f5";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     ctx.fillStyle = "rgba(255,255,255,0.96)";
     roundRect(ctx, 20, 20, 840, 680, 28);
     ctx.fill();
@@ -348,7 +564,6 @@ async function startRecording() {
     ctx.fillText("Audience Reaction", 50, 70);
     drawVideoBox(ctx, 50, 100, 385, 250, "Host");
     drawGuests(ctx, 50, 380, 790, 290);
-
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     roundRect(ctx, 880, 20, 380, 680, 28);
     ctx.fill();
@@ -478,14 +693,19 @@ el.recordBtn.onclick = async () => {
   else await startRecording();
 };
 
+el.watchOnlyBtn.onclick = () => enterGuestMode("watch");
+el.joinCameraBtn.onclick = () => enterGuestMode("camera");
+
 startEventStream();
 updateGuestCount();
 resetReveal();
 
 if (!isGuest) {
   postMessage({ type: "join", room: roomId, from: selfId(), role: "host" });
+} else if (state.guestMode) {
+  enterGuestMode(state.guestMode);
 } else {
-  postMessage({ type: "join", room: roomId, from: selfId(), role: "guest" });
+  showGuestFlow("name");
 }
 
 window.addEventListener("beforeunload", () => {

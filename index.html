@@ -19,6 +19,34 @@
       <section id="contextBanner" class="context-banner" hidden>
         Camera and clipboard access need `http://localhost` or a secure site. Open this page through the local server instead of `file://`.
       </section>
+      <div id="guestModal" class="guest-modal" hidden>
+        <div class="guest-modal-card">
+          <div class="guest-modal-header">
+            <p class="eyebrow">Guest check-in</p>
+            <button id="closeGuestModalBtn" class="mini-btn" type="button">Close</button>
+          </div>
+          <div class="wizard-steps" aria-hidden="true">
+            <span id="stepDotName" class="wizard-step">1</span>
+            <span id="stepDotEntry" class="wizard-step">2</span>
+            <span id="stepDotPoll" class="wizard-step">3</span>
+            <span id="stepDotNote" class="wizard-step">4</span>
+          </div>
+          <h2 id="guestModalTitle">Enter your name</h2>
+          <p id="guestModalCopy" class="lede">We’ll use your name during the live reveal room.</p>
+          <div id="guestModalBody"></div>
+        </div>
+      </div>
+      <section id="guestEntryPanel" class="guest-entry card" hidden>
+        <div>
+          <p class="eyebrow">Guest entry</p>
+          <h2>How do you want to join?</h2>
+          <p class="lede">Choose watch-only if you just want to view, or join with camera if you want your reaction on the call.</p>
+        </div>
+        <div class="button-row">
+          <button id="watchOnlyBtn" class="primary">Watch only</button>
+          <button id="joinCameraBtn" class="secondary">Join with camera</button>
+        </div>
+      </section>
       <section class="hero card">
         <div class="hero-copy">
           <p class="eyebrow">Gender reveal live room</p>
