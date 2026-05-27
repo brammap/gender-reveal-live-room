@@ -1,0 +1,13 @@
+{
+  "name": "gender-reveal-live-room",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live gender reveal room with host, guest reactions, countdown reveal, and recording.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
