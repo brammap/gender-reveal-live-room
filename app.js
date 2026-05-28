@@ -134,6 +134,7 @@ async function createHostPeer(remoteId) {
     strip.innerHTML = `
       <article class="guest-tile">
         <video id="guestRemoteVideo" autoplay playsinline></video>
+        <audio id="guestRemoteAudio" autoplay></audio>
         <div class="guest-footer">
           <strong>Guest</strong>
           <span class="pill">Live</span>
@@ -144,7 +145,15 @@ async function createHostPeer(remoteId) {
     if (video) {
       video.srcObject = stream;
       video.muted = false;
+      video.volume = 1;
+      video.playsInline = true;
       video.play?.().catch(() => {});
+    }
+    const audio = document.getElementById("guestRemoteAudio");
+    if (audio) {
+      audio.srcObject = stream;
+      audio.volume = 1;
+      audio.play?.().catch(() => {});
     }
   };
   pc.onicecandidate = (event) => {

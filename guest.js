@@ -43,17 +43,33 @@ async function loadIceServers() {
 function attachHostStream(stream) {
   state.hostStream = stream;
   const hostVideo = document.getElementById("hostVideo");
+  const hostAudio = document.getElementById("hostAudio");
   if (hostVideo) {
     hostVideo.srcObject = stream;
+    hostVideo.muted = false;
+    hostVideo.volume = 1;
     hostVideo.play?.().catch(() => {});
+  }
+  if (hostAudio) {
+    hostAudio.srcObject = stream;
+    hostAudio.volume = 1;
+    hostAudio.play?.().catch(() => {});
   }
 }
 
 function attachGuestStream(stream) {
   const guestVideo = document.getElementById("guestVideo");
+  const guestAudio = document.getElementById("guestAudio");
   if (guestVideo) {
     guestVideo.srcObject = stream;
+    guestVideo.muted = false;
+    guestVideo.volume = 1;
     guestVideo.play?.().catch(() => {});
+  }
+  if (guestAudio) {
+    guestAudio.srcObject = stream;
+    guestAudio.volume = 1;
+    guestAudio.play?.().catch(() => {});
   }
 }
 
@@ -235,6 +251,7 @@ function showLiveView() {
             <span class="pill">Live</span>
           </header>
           <video id="hostVideo" autoplay playsinline></video>
+          <audio id="hostAudio" autoplay></audio>
         </article>
         <article class="card studio-panel" ${hasCamera ? "" : 'hidden'}>
           <header>
@@ -242,6 +259,7 @@ function showLiveView() {
             <span class="pill">On</span>
           </header>
           <video id="guestVideo" autoplay playsinline muted></video>
+          <audio id="guestAudio" autoplay></audio>
         </article>
       </div>
     </div>
