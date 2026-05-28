@@ -59,17 +59,11 @@ function attachHostStream(stream) {
 
 function attachGuestStream(stream) {
   const guestVideo = document.getElementById("guestVideo");
-  const guestAudio = document.getElementById("guestAudio");
   if (guestVideo) {
     guestVideo.srcObject = stream;
-    guestVideo.muted = false;
+    guestVideo.muted = true;
     guestVideo.volume = 1;
     guestVideo.play?.().catch(() => {});
-  }
-  if (guestAudio) {
-    guestAudio.srcObject = stream;
-    guestAudio.volume = 1;
-    guestAudio.play?.().catch(() => {});
   }
 }
 
@@ -259,7 +253,6 @@ function showLiveView() {
             <span class="pill">On</span>
           </header>
           <video id="guestVideo" autoplay playsinline muted></video>
-          <audio id="guestAudio" autoplay></audio>
         </article>
       </div>
     </div>
