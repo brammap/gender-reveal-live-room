@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reveal Room - Guest</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260527-4" />
+  </head>
+  <body class="guest-view guest-page">
+    <div class="ambient ambient-1"></div>
+    <div class="ambient ambient-2"></div>
+    <main class="shell">
+      <section class="guest-only-shell card">
+        <p class="eyebrow">Guest entry</p>
+        <h1>Welcome to the reveal</h1>
+        <p class="lede">Choose how you want to join before the reveal starts.</p>
+        <div id="guestEntryPanel" class="guest-entry card" data-view="default">
+          <div>
+            <p class="eyebrow">Guest entry</p>
+            <h2>How do you want to join?</h2>
+            <p class="lede">Choose watch-only if you just want to view, or join with camera if you want your reaction on the call.</p>
+          </div>
+          <div class="button-row">
+            <button id="watchOnlyBtn" class="primary" type="button">Watch only</button>
+            <button id="joinCameraBtn" class="secondary" type="button">Join with camera</button>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./guest.js?v=20260527-4"></script>
+  </body>
+</html>

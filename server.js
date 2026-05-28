@@ -13,6 +13,7 @@ const mimeTypes = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".webm": "video/webm",
+  ".gif": "image/gif",
 };
 
 const rooms = new Map();
@@ -36,6 +37,23 @@ function broadcast(roomId, message) {
   for (const client of room.clients.values()) {
     sendEvent(client.res, "message", message);
   }
+}
+
+function serveFile(res, filePath, extraHeaders = {}) {
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Type": mimeTypes[path.extname(filePath).toLowerCase()] || "application/octet-stream",
+      "Cache-Control": "no-store",
+      ...extraHeaders,
+    });
+    res.end(data);
+  });
 }
 
 const server = http.createServer((req, res) => {
@@ -99,27 +117,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  const urlPath = url.pathname === "/" ? "/index.html" : url.pathname;
-  const filePath = path.join(root, urlPath);
+  const isGuest = url.searchParams.has("guest");
+  const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
+
+  if (isGuest && (pathname === "/index.html" || pathname === "/" || pathname === "/host.html")) {
+    serveFile(res, path.join(root, "guest.html"));
+    return;
+  }
+
+  if (!isGuest && (pathname === "/index.html" || pathname === "/")) {
+    serveFile(res, path.join(root, "host.html"));
+    return;
+  }
+
+  const filePath = path.join(root, pathname);
   if (!filePath.startsWith(root)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
   }
 
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      res.writeHead(404);
-      res.end("Not found");
-      return;
-    }
-
-    res.writeHead(200, {
-      "Content-Type": mimeTypes[path.extname(filePath).toLowerCase()] || "application/octet-stream",
-      "Cache-Control": "no-store",
-    });
-    res.end(data);
-  });
+  serveFile(res, filePath);
 });
 
 const port = process.env.PORT || 3000;

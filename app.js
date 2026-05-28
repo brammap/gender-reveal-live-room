@@ -1,7 +1,11 @@
 const params = new URLSearchParams(location.search);
 const roomId = params.get("room") || "reveal-room";
+const isGuest = false;
 
 const els = {
+  guestEntryPanel: document.getElementById("guestEntryPanel"),
+  watchOnlyBtn: document.getElementById("watchOnlyBtn"),
+  joinCameraBtn: document.getElementById("joinCameraBtn"),
   heroSection: document.getElementById("heroSection"),
   welcomeNextBtn: document.getElementById("welcomeNextBtn"),
   genderStep: document.getElementById("genderStep"),
@@ -22,9 +26,13 @@ const els = {
   revealStage: document.getElementById("revealStage"),
   stageResult: document.getElementById("stageResult"),
   revealGif: document.getElementById("revealGif"),
+  exitRevealBtn: document.getElementById("exitRevealBtn"),
   roomIdLabel: document.getElementById("roomIdLabel"),
   roleLabel: document.getElementById("roleLabel"),
   guestModal: document.getElementById("guestModal"),
+  guestModalTitle: document.getElementById("guestModalTitle"),
+  guestModalCopy: document.getElementById("guestModalCopy"),
+  guestModalBody: document.getElementById("guestModalBody"),
   closeGuestModalBtn: document.getElementById("closeGuestModalBtn"),
 };
 
@@ -38,7 +46,124 @@ const state = {
   recording: false,
   recorder: null,
   recordedChunks: [],
+  guestMode: "watch",
+  guestConnected: false,
+  clientId: (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`),
+  signalSource: null,
+  signalStarted: false,
+  peer: null,
+  guestRequested: false,
+  guestPeerId: null,
+  guestVideoStream: null,
 };
+
+async function sendSignal(type, data = {}) {
+  await fetch("/api/message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ room: roomId, type, from: state.clientId, ...data }),
+  });
+}
+
+function startSignalListener() {
+  if (state.signalStarted) return;
+  state.signalStarted = true;
+  state.signalSource = new EventSource(`/api/events?room=${encodeURIComponent(roomId)}&client=${state.clientId}`);
+  state.signalSource.addEventListener("message", async (event) => {
+    const message = JSON.parse(event.data);
+    if (!message || message.from === state.clientId) return;
+    if (message.type === "guest-join") {
+      state.guestRequested = true;
+      state.guestPeerId = message.from;
+      if (state.localStream && !state.peer) await createHostPeer(message.from);
+      return;
+    }
+    if (message.type === "offer" && state.peer) {
+      await state.peer.setRemoteDescription(message.sdp);
+      const answer = await state.peer.createAnswer();
+      await state.peer.setLocalDescription(answer);
+      await sendSignal("answer", { to: message.from, sdp: answer });
+      return;
+    }
+    if (message.type === "answer" && state.peer) {
+      await state.peer.setRemoteDescription(message.sdp);
+      return;
+    }
+    if (message.type === "ice" && state.peer && message.candidate) {
+      try { await state.peer.addIceCandidate(message.candidate); } catch {}
+    }
+  });
+}
+
+async function createHostPeer(remoteId) {
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+  state.peer = pc;
+  state.localStream.getTracks().forEach((track) => pc.addTrack(track, state.localStream));
+  pc.ontrack = (event) => {
+    state.guestConnected = true;
+    if (els.guestCount) els.guestCount.textContent = "1 joined";
+    const stream = event.streams?.[0];
+    if (!stream) return;
+    const strip = document.getElementById("guestStrip");
+    if (!strip) return;
+    state.guestVideoStream = stream;
+    strip.innerHTML = `
+      <article class="guest-tile">
+        <video id="guestRemoteVideo" autoplay playsinline muted></video>
+        <div class="guest-footer">
+          <strong>Guest</strong>
+          <span class="pill">Live</span>
+        </div>
+      </article>
+    `;
+    const video = document.getElementById("guestRemoteVideo");
+    if (video) {
+      video.srcObject = stream;
+      video.play?.().catch(() => {});
+    }
+  };
+  pc.onicecandidate = (event) => {
+    if (event.candidate) sendSignal("ice", { to: remoteId, candidate: event.candidate });
+  };
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await sendSignal("offer", { to: remoteId, sdp: offer });
+}
+
+const guestEntryDefaultHTML = `
+  <div>
+    <p class="eyebrow">Guest entry</p>
+    <h2>How do you want to join?</h2>
+    <p class="lede">Choose watch-only if you just want to view, or join with camera if you want your reaction on the call.</p>
+  </div>
+  <div class="button-row">
+    <button id="watchOnlyBtn" class="primary" type="button">Watch only</button>
+    <button id="joinCameraBtn" class="secondary" type="button">Join with camera</button>
+  </div>
+`;
+
+function renderGuestShell() {
+  const shell = document.querySelector("main.shell");
+  if (!shell) return;
+  shell.innerHTML = `
+    <section id="guestOnlyShell" class="guest-only-shell card">
+      <p class="eyebrow">Guest entry</p>
+      <h1>Welcome to the reveal</h1>
+      <p class="lede">Choose how you want to join before the reveal starts.</p>
+      <div id="guestEntryPanel" class="guest-entry card" data-view="default">
+        <div>
+          <p class="eyebrow">Guest entry</p>
+          <h2>How do you want to join?</h2>
+          <p class="lede">Choose watch-only if you just want to view, or join with camera if you want your reaction on the call.</p>
+        </div>
+        <div class="button-row">
+          <button id="watchOnlyBtn" class="primary" type="button" onclick="window.__guestPick('watch')">Watch only</button>
+          <button id="joinCameraBtn" class="secondary" type="button" onclick="window.__guestPick('camera')">Join with camera</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
 
 function setStatus(text) {
   if (els.statusLabel) els.statusLabel.textContent = text;
@@ -77,6 +202,8 @@ function showOnly(step) {
   if (els.revealStage) els.revealStage.hidden = true;
   if (els.revealStage) els.revealStage.classList.remove("reveal-live");
   if (els.revealGif) els.revealGif.hidden = true;
+  if (els.exitRevealBtn) els.exitRevealBtn.hidden = true;
+  document.body.classList.remove("reveal-mode");
 
   if (els.copyGuestLinkBtn) els.copyGuestLinkBtn.hidden = !isLive;
   if (els.startCamBtnInline) els.startCamBtnInline.hidden = !isLive;
@@ -94,11 +221,36 @@ function showOnly(step) {
   }
 }
 
+function showGuestOnly() {
+  if (els.guestEntryPanel) els.guestEntryPanel.hidden = false;
+  setStartupStatus("Guest mode");
+  requestAnimationFrame(() => els.guestEntryPanel?.scrollIntoView({ behavior: "auto", block: "start" }));
+}
+
 function renderRevealPreview() {
   if (!els.revealStage) return;
   els.revealStage.classList.toggle("reveal-boy", state.gender === "boy");
   els.revealStage.classList.toggle("reveal-girl", state.gender === "girl");
   setRevealText(state.gender === "girl" ? "It's a girl!" : "It's a boy!");
+}
+
+function exitRevealMode() {
+  document.body.classList.remove("reveal-mode");
+  state.revealActive = false;
+  state.countdownRunning = false;
+  if (els.exitRevealBtn) els.exitRevealBtn.hidden = true;
+  if (els.revealStage) {
+    els.revealStage.hidden = true;
+    els.revealStage.classList.remove("reveal-live");
+  }
+  if (els.revealGif) {
+    els.revealGif.hidden = true;
+    els.revealGif.removeAttribute("src");
+  }
+  renderRevealPreview();
+  showOnly("live");
+  setStatus("Back to room");
+  sendSignal("reveal-reset", { gender: state.gender });
 }
 
 function chooseGender(gender) {
@@ -121,6 +273,10 @@ async function startCamera() {
   if (els.startCamBtnInline) els.startCamBtnInline.textContent = "Disable camera";
   if (els.hostBadge) els.hostBadge.textContent = "Camera on";
   setStatus("Camera on");
+  startSignalListener();
+  if (state.guestRequested && !state.peer && state.guestPeerId) {
+    await createHostPeer(state.guestPeerId);
+  }
   return state.localStream;
 }
 
@@ -131,6 +287,13 @@ function stopCamera() {
   if (els.startCamBtnInline) els.startCamBtnInline.textContent = "Enable camera";
   if (els.hostBadge) els.hostBadge.textContent = "Offline";
   setStatus("Camera off");
+  state.peer?.close();
+  state.peer = null;
+  state.guestRequested = false;
+  state.guestPeerId = null;
+  state.signalSource?.close?.();
+  state.signalSource = null;
+  state.signalStarted = false;
 }
 
 function copyGuestLink() {
@@ -198,14 +361,18 @@ function startConfetti() {
 function startCountdownAndReveal() {
   if (state.countdownRunning || !state.gender) return;
   state.countdownRunning = true;
+  document.body.classList.add("reveal-mode");
   if (els.revealStage) els.revealStage.hidden = false;
   if (els.revealStage) els.revealStage.classList.add("reveal-live");
   const gif = state.selectedGif || getGifForGender(state.gender);
   const count = ["5", "4", "3", "2", "1"];
+  sendSignal("reveal-start", { gender: state.gender, gif });
   let index = 0;
   const step = () => {
     if (index < count.length) {
-      setRevealText(count[index]);
+      const current = count[index];
+      setRevealText(current);
+      sendSignal("reveal-count", { count: current, gender: state.gender });
       setStatus(`Reveal in ${count[index]}`);
       index += 1;
       setTimeout(step, 1000);
@@ -216,10 +383,15 @@ function startCountdownAndReveal() {
       els.revealGif.src = gif;
       els.revealGif.hidden = false;
     }
+    sendSignal("reveal-final", { gender: state.gender, gif });
     setRevealText(state.gender === "girl" ? "It's a girl!" : "It's a boy!");
     setStatus("Reveal live");
     startConfetti();
     state.countdownRunning = false;
+    if (els.exitRevealBtn) {
+      els.exitRevealBtn.hidden = false;
+      els.exitRevealBtn.onclick = () => exitRevealMode();
+    }
   };
   step();
 }
@@ -298,8 +470,72 @@ function stopRecording() {
 }
 
 function init() {
+  document.body.classList.toggle("guest-view", isGuest);
   updateConnectionLabels();
   renderRevealPreview();
+  if (isGuest) {
+    renderGuestShell();
+    els.guestEntryPanel = document.getElementById("guestEntryPanel");
+    window.__guestPick = (mode) => {
+      state.guestMode = mode;
+      const panel = document.getElementById("guestEntryPanel");
+      if (!panel) return;
+      panel.dataset.view = "name";
+      panel.innerHTML = `
+        <div class="guest-entry-step">
+          <div>
+            <p class="eyebrow">${mode === "camera" ? "Join with camera" : "Watch only"}</p>
+            <h2>Enter your name</h2>
+            <p class="lede">${
+              mode === "camera"
+                ? "You will join the room with camera on."
+                : "You can watch the reveal without joining on camera."
+            }</p>
+          </div>
+          <label class="guest-field">
+            <span class="hint">Your name</span>
+            <input id="guestNameInput" type="text" placeholder="Type your name" />
+          </label>
+          <div class="button-row">
+            <button id="guestContinueBtn" class="primary" type="button">Continue</button>
+            <button id="guestBackBtn" class="secondary" type="button">Back</button>
+          </div>
+        </div>
+      `;
+      const input = panel.querySelector("#guestNameInput");
+      input?.focus();
+      panel.querySelector("#guestBackBtn")?.addEventListener("click", () => {
+        panel.dataset.view = "default";
+        panel.innerHTML = guestEntryDefaultHTML;
+      });
+      panel.querySelector("#guestContinueBtn")?.addEventListener("click", () => {
+        const name = input?.value.trim();
+        if (!name) {
+          input?.focus();
+          return;
+        }
+        panel.dataset.view = "done";
+        panel.innerHTML = `
+          <div class="guest-entry-step">
+            <div>
+              <p class="eyebrow">Guest ready</p>
+              <h2>Thanks, ${name}</h2>
+              <p class="lede">You are set to ${mode === "camera" ? "join with camera" : "watch only"}.</p>
+            </div>
+            <div class="button-row">
+              <button id="guestDoneBtn" class="primary" type="button">Done</button>
+            </div>
+          </div>
+        `;
+        panel.querySelector("#guestDoneBtn")?.addEventListener("click", () => {
+          panel.dataset.view = "default";
+          panel.innerHTML = guestEntryDefaultHTML;
+        });
+      });
+    };
+    showGuestOnly();
+    return;
+  }
   showOnly("welcome");
   setStartupStatus("Room ready");
   if (els.guestModal) els.guestModal.hidden = true;
@@ -309,16 +545,29 @@ function init() {
   els.selectGirlBtn.onclick = () => chooseGender("girl");
   els.copyGuestLinkBtn.onclick = copyGuestLink;
   els.startCamBtnInline.onclick = async () => {
+    els.startCamBtnInline.disabled = true;
     try {
       if (state.localStream) stopCamera();
       else await startCamera();
     } catch (err) {
       setStatus(err?.name === "NotAllowedError" ? "Camera permission denied" : "Camera blocked");
+    } finally {
+      els.startCamBtnInline.disabled = false;
     }
   };
-  els.revealBtn.onclick = startCountdownAndReveal;
-  els.recordBtn.onclick = () => (state.recording ? stopRecording() : startRecording());
+  els.revealBtn.onclick = () => {
+    els.revealBtn.disabled = true;
+    startCountdownAndReveal();
+    setTimeout(() => (els.revealBtn.disabled = false), 2500);
+  };
+  els.recordBtn.onclick = () => {
+    els.recordBtn.disabled = true;
+    if (state.recording) stopRecording();
+    else startRecording();
+    setTimeout(() => (els.recordBtn.disabled = false), 400);
+  };
   els.closeGuestModalBtn.onclick = () => (els.guestModal.hidden = true);
+  if (els.exitRevealBtn) els.exitRevealBtn.onclick = exitRevealMode;
 
   window.addEventListener("beforeunload", () => {
     stopRecording();
