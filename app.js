@@ -15,7 +15,9 @@ const els = {
   controlsCard: document.getElementById("controlsCard"),
   copyGuestLinkBtn: document.getElementById("copyGuestLinkBtn"),
   startCamBtnInline: document.getElementById("startCamBtnInline"),
+  hostMicBtn: document.getElementById("hostMicBtn"),
   revealBtn: document.getElementById("revealBtn"),
+  micBtn: document.getElementById("micBtn"),
   recordBtn: document.getElementById("recordBtn"),
   downloadBtn: document.getElementById("downloadBtn"),
   startupStatus: document.getElementById("startupStatus"),
@@ -43,6 +45,7 @@ const state = {
   revealActive: false,
   countdownRunning: false,
   localStream: null,
+  micEnabled: false,
   recording: false,
   recorder: null,
   recordedChunks: [],
@@ -130,7 +133,7 @@ async function createHostPeer(remoteId) {
     state.guestVideoStream = stream;
     strip.innerHTML = `
       <article class="guest-tile">
-        <video id="guestRemoteVideo" autoplay playsinline muted></video>
+        <video id="guestRemoteVideo" autoplay playsinline></video>
         <div class="guest-footer">
           <strong>Guest</strong>
           <span class="pill">Live</span>
@@ -140,6 +143,7 @@ async function createHostPeer(remoteId) {
     const video = document.getElementById("guestRemoteVideo");
     if (video) {
       video.srcObject = stream;
+      video.muted = false;
       video.play?.().catch(() => {});
     }
   };
@@ -207,6 +211,9 @@ function updateConnectionLabels() {
   if (els.roleLabel) els.roleLabel.textContent = "Host";
   if (els.hostBadge) els.hostBadge.textContent = state.localStream ? "Camera on" : "Offline";
   if (els.guestCount) els.guestCount.textContent = "0 joined";
+  const micLabel = state.localStream ? (state.micEnabled ? "Mic off" : "Mic on") : "Mic on";
+  if (els.micBtn) els.micBtn.textContent = micLabel;
+  if (els.hostMicBtn) els.hostMicBtn.textContent = micLabel;
 }
 
 function showOnly(step) {
@@ -290,10 +297,12 @@ async function startCamera() {
   }
   if (state.localStream) return state.localStream;
   state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  state.micEnabled = true;
   els.localVideo.srcObject = state.localStream;
   if (els.startCamBtnInline) els.startCamBtnInline.textContent = "Disable camera";
   if (els.hostBadge) els.hostBadge.textContent = "Camera on";
   setStatus("Camera on");
+  updateConnectionLabels();
   startSignalListener();
   if (state.guestRequested && !state.peer && state.guestPeerId) {
     await createHostPeer(state.guestPeerId);
@@ -307,6 +316,8 @@ function stopCamera() {
   if (els.localVideo) els.localVideo.srcObject = null;
   if (els.startCamBtnInline) els.startCamBtnInline.textContent = "Enable camera";
   if (els.hostBadge) els.hostBadge.textContent = "Offline";
+  state.micEnabled = false;
+  updateConnectionLabels();
   setStatus("Camera off");
   state.peer?.close();
   state.peer = null;
@@ -482,6 +493,23 @@ function startRecording() {
   });
 }
 
+function toggleHostMic() {
+  if (!state.localStream) {
+    startCamera().catch((err) => {
+      setStatus(err?.name === "NotAllowedError" ? "Camera permission denied" : "Camera blocked");
+    });
+    return;
+  }
+  const audioTracks = state.localStream.getAudioTracks();
+  if (!audioTracks.length) return;
+  state.micEnabled = !state.micEnabled;
+  audioTracks.forEach((track) => {
+    track.enabled = state.micEnabled;
+  });
+  updateConnectionLabels();
+  setStatus(state.micEnabled ? "Mic on" : "Mic off");
+}
+
 function stopRecording() {
   if (!state.recording) return;
   state.recorder?.stop();
@@ -587,6 +615,8 @@ function init() {
     else startRecording();
     setTimeout(() => (els.recordBtn.disabled = false), 400);
   };
+  els.micBtn.onclick = toggleHostMic;
+  els.hostMicBtn.onclick = toggleHostMic;
   els.closeGuestModalBtn.onclick = () => (els.guestModal.hidden = true);
   if (els.exitRevealBtn) els.exitRevealBtn.onclick = exitRevealMode;
 

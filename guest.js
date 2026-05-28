@@ -8,6 +8,7 @@ const state = {
   mode: null,
   peer: null,
   localStream: null,
+  micEnabled: false,
   name: "",
   revealGender: null,
   revealGif: null,
@@ -54,6 +55,12 @@ function attachGuestStream(stream) {
     guestVideo.srcObject = stream;
     guestVideo.play?.().catch(() => {});
   }
+}
+
+function updateGuestMicButton() {
+  const btn = document.getElementById("guestMicBtn");
+  if (!btn) return;
+  btn.textContent = state.localStream ? (state.micEnabled ? "Mic off" : "Mic on") : "Mic on";
 }
 
 function clearRevealTimer() {
@@ -215,6 +222,7 @@ function showLiveView() {
           <h2>${state.name ? `Welcome, ${state.name}` : "You're in"}</h2>
           <p class="lede">${hasCamera ? "Your camera is on." : "Watch-only mode."}</p>
         </div>
+        <button id="guestMicBtn" class="secondary" type="button">Mic on</button>
       </div>
       <section id="revealArea" class="card reveal-stage" hidden>
         <img id="revealGif" class="reveal-gif" alt="Selected reveal GIF" hidden />
@@ -240,6 +248,7 @@ function showLiveView() {
   `;
   document.body.classList.remove("reveal-mode");
   if (state.hostStream) attachHostStream(state.hostStream);
+  updateGuestMicButton();
   const reveal = document.getElementById("revealArea");
   const label = document.getElementById("revealLabel");
   const gif = document.getElementById("revealGif");
@@ -262,8 +271,36 @@ function showLiveView() {
   if (hasCamera) {
     navigator.mediaDevices?.getUserMedia?.({ video: true, audio: true }).then((stream) => {
       state.localStream = stream;
+      state.micEnabled = true;
       attachGuestStream(stream);
+      updateGuestMicButton();
     }).catch(() => {});
+  }
+  const micBtn = document.getElementById("guestMicBtn");
+  if (micBtn) {
+    micBtn.onclick = async () => {
+      if (!state.localStream && navigator.mediaDevices?.getUserMedia) {
+        try {
+          state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          state.micEnabled = true;
+          attachGuestStream(state.localStream);
+          updateGuestMicButton();
+          if (state.peer && state.mode === "camera") {
+            state.localStream.getTracks().forEach((track) => state.peer.addTrack(track, state.localStream));
+          }
+          return;
+        } catch {
+          return;
+        }
+      }
+      const audioTracks = state.localStream?.getAudioTracks?.() || [];
+      if (!audioTracks.length) return;
+      state.micEnabled = !state.micEnabled;
+      audioTracks.forEach((track) => {
+        track.enabled = state.micEnabled;
+      });
+      updateGuestMicButton();
+    };
   }
 }
 
@@ -304,6 +341,7 @@ function showNameStep(mode) {
     if (state.mode === "camera" && !state.localStream && navigator.mediaDevices?.getUserMedia) {
       try {
         state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        state.micEnabled = true;
         attachGuestStream(state.localStream);
       } catch {
         state.localStream = null;
