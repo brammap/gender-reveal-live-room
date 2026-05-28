@@ -55,7 +55,28 @@ const state = {
   guestRequested: false,
   guestPeerId: null,
   guestVideoStream: null,
+  iceServers: null,
+  iceServersPromise: null,
 };
+
+async function loadIceServers() {
+  if (state.iceServers) return state.iceServers;
+  if (!state.iceServersPromise) {
+    state.iceServersPromise = fetch("/api/turn")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("TURN unavailable"))))
+      .then((data) => {
+        state.iceServers = Array.isArray(data.iceServers) && data.iceServers.length
+          ? data.iceServers
+          : [{ urls: "stun:stun.l.google.com:19302" }];
+        return state.iceServers;
+      })
+      .catch(() => {
+        state.iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+        return state.iceServers;
+      });
+  }
+  return state.iceServersPromise;
+}
 
 async function sendSignal(type, data = {}) {
   await fetch("/api/message", {
@@ -96,7 +117,7 @@ function startSignalListener() {
 }
 
 async function createHostPeer(remoteId) {
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+  const pc = new RTCPeerConnection({ iceServers: await loadIceServers() });
   state.peer = pc;
   state.localStream.getTracks().forEach((track) => pc.addTrack(track, state.localStream));
   pc.ontrack = (event) => {

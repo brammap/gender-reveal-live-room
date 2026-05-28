@@ -16,7 +16,28 @@ const state = {
   revealStarted: false,
   hostStream: null,
   revealTimer: null,
+  iceServers: null,
+  iceServersPromise: null,
 };
+
+async function loadIceServers() {
+  if (state.iceServers) return state.iceServers;
+  if (!state.iceServersPromise) {
+    state.iceServersPromise = fetch("/api/turn")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("TURN unavailable"))))
+      .then((data) => {
+        state.iceServers = Array.isArray(data.iceServers) && data.iceServers.length
+          ? data.iceServers
+          : [{ urls: "stun:stun.l.google.com:19302" }];
+        return state.iceServers;
+      })
+      .catch(() => {
+        state.iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+        return state.iceServers;
+      });
+  }
+  return state.iceServersPromise;
+}
 
 function attachHostStream(stream) {
   state.hostStream = stream;
@@ -151,7 +172,7 @@ function startSignalListener() {
 
 async function createGuestPeer() {
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    iceServers: await loadIceServers(),
   });
   state.peer = pc;
   if (state.mode === "camera" && state.localStream) {
